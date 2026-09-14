@@ -192,12 +192,10 @@ table.sch{width:100%;border-collapse:collapse;}
 .exam-form .row2 input{flex:1;min-width:0;}
 
 /* ---------------- 右侧：学习直播间 ---------------- */
-#roomNameInput{
-  font-size:15px;font-weight:650;border:1px solid transparent;background:transparent;
-  color:var(--ink);border-radius:6px;padding:2px 6px;margin:-2px 0 -2px -6px;width:100%;min-width:0;
+.room-name{
+  font-size:15px;font-weight:650;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;
 }
-#roomNameInput:hover{border-color:var(--line);}
-#roomNameInput:focus{outline:none;border-color:var(--accent);background:#fff;}
 .online-pill{
   flex:none;font-size:12px;color:var(--green);background:#edf7f0;border-radius:99px;padding:3px 10px;
   display:flex;align-items:center;gap:6px;font-weight:600;
@@ -209,6 +207,9 @@ table.sch{width:100%;border-collapse:collapse;}
   background:#eef1f5;border:1px solid var(--line);
 }
 .tile video,.tile img.peer-frame{width:100%;height:100%;object-fit:cover;display:block;background:#eef1f5;}
+.tile video{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#11161d;
+}
 .tile .avatar{
   position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:30px;color:#fff;font-weight:600;letter-spacing:1px;
@@ -391,7 +392,7 @@ table.sch{width:100%;border-collapse:collapse;}
     <!-- 学习直播间 -->
     <section class="panel">
       <div class="panel-hd">
-        <input type="text" id="roomNameInput" value="HanYIF 自习直播间" maxlength="24" title="点击可编辑直播间名称" />
+        <div class="room-name" id="roomName">学习室</div>
         <span class="online-pill" id="onlinePill">1 人在线</span>
       </div>
       <div class="panel-bd">
@@ -1046,13 +1047,11 @@ async function saveEdit(){
  * 任何设备、任何地点打开网页的同学都会加入同一个实时房间：
  *  - 在线名单 / 昵称 / 摄像头开关：Supabase Realtime Presence
  *    （上线、下线、断线均由 Realtime 服务器自动维护，本页无需心跳轮询）
- *  - 直播间名称：Realtime Broadcast 广播，最后编辑者生效
- *  - 摄像头：同步“是否开启”的状态；自己的窗口直接显示本机摄像头实时画面
+ *  - 摄像头画面：Presence 同步开关状态，WebRTC P2P 互传真实视频（信令借道 Broadcast）
  * Realtime 与倒计时共用同一个 Supabase 项目，无需另外建表；
  * anon 密钥默认允许使用 Presence / Broadcast（只有数据库变更监听才涉及 RLS）。
  */
 const ROOM_CHANNEL = 'hanyif-study-room-v2';
-const ROOM_KEY = 'sr.room';
 
 /* 我的身份：id 按标签页独立（同一台电脑多开标签页也算不同同学）；
    昵称优先取本标签页上次用的，其次取浏览器记住的登录昵称，最后随机生成 */
@@ -1066,6 +1065,19 @@ const me = {
 $('#nickInput').value = me.name;
 
 const peers = new Map();      // 其他在线同学：id -> {id,name,cam}（来自 Presence）
+/* ==== WebRTC 视频（mesh：我与每位同学各一条 P2P 连接；信令借道 Realtime Broadcast） ==== */
+/* STUN 全部选用国内直连可达 / Cloudflare anycast 的服务器，避免依赖被墙的 Google STUN。
+   注意：STUN 只能解决锥形 NAT；双方均为对称 NAT 时仍需 TURN 中继（后续可再加）。 */
+const ICE_SERVERS = [
+  { urls: [
+    'stun:stun.cloudflare.com:3478',
+    'stun:stun.miwifi.com:3478',
+    'stun:stun.qq.com:3478'
+  ] }
+];
+const pcs = new Map();          // 同学 id -> { pc, polite, makingOffer, ignoreOffer, pendingCandidates, retries }
+const remoteTracks = new Map(); // 同学 id -> 对端发来的视频轨道（整连接期间不变，mute/unmute 随开关）
+let camTrack = null;            // 本机当前正在发送的视频轨（null=摄像头关闭）
 let roomCh = null;            // Supabase Realtime 频道实例
 let rtSubscribed = false;     // 频道是否已订阅成功（成功后才能 track）
 let rtJoined = false;         // 是否完成过至少一次名单同步（决定在线人数显示）
@@ -1105,6 +1117,7 @@ function onPresenceSync(){
   });
   rtJoined = true;
   renderTiles();
+  syncWebRTC();               /* 名单变化后建立/关闭 P2P 连接 */
 }
 
 /* 初始化实时房间（Supabase 不可用时退化为只显示自己，不影响其它功能） */
@@ -1117,16 +1130,21 @@ function initRoom(){
   }catch(e){ $('#onlinePill').textContent='实时房间不可用'; renderTiles(); return; }
 
   roomCh.on('presence', { event:'sync' }, onPresenceSync);
-  roomCh.on('broadcast', { event:'room' }, ({payload})=>applyRoomName(payload,false));
-  /* 有新同学加入时，把我本地保存的房间名再广播一次（新加入者此前收不到历史广播）；
-     接收端按消息签名去重，多人同时回应也不会造成抖动 */
-  roomCh.on('presence', { event:'join' }, ()=>{
-    const r = storeGet(ROOM_KEY,null);
-    if(r && r.name){ try{ roomCh.send({type:'broadcast', event:'room', payload:r}).catch(()=>{}); }catch(e){} }
+  /* WebRTC 信令：offer / answer / ICE candidate，全走同一个频道广播，按 to 字段单播过滤 */
+  roomCh.on('broadcast', { event:'signal' }, ({payload})=>handleSignal(payload));
+  roomCh.on('presence', { event:'join' }, ({key})=>{
+    /* 对方断线重连会用同一个 key 重新出现：旧 P2P 连接作废。
+       不依赖 join 与 sync 的回调顺序：名单已更新就立即重建，否则交给随后的 onPresenceSync 兜底 */
+    if(key && key!==me.id){
+      if(pcs.has(key)) closePC(key);
+      if(peers.has(key)) createPC(key);
+    }
   });
+  roomCh.on('presence', { event:'leave' }, ({key})=>{ if(key) closePC(key); });
 
   roomCh.subscribe((status)=>{
     if(status === 'SUBSCRIBED'){
+      if(rtSubscribed){ [...pcs.keys()].forEach(closePC); }  /* 频道断线重连：旧连接全部重建 */
       rtSubscribed = true;
       trackNow();                 /* 订阅成功后立即上线；断线自动重连成功时也会走到这里 */
     }else if(status === 'CHANNEL_ERROR' || status === 'TIMED_ERROR' || status === 'CLOSED'){
@@ -1138,9 +1156,151 @@ function initRoom(){
 }
 /* 离开页面：主动下线；即使来不及执行，Presence 也会按 TTL 自动把我剔除 */
 function leaveRoom(){
+  [...pcs.keys()].forEach(closePC);
   try{ roomCh && roomCh.untrack(); }catch(e){}
   try{ roomCh && supa && supa.removeChannel(roomCh); }catch(e){}
 }
+
+/* ========================================================================================
+   WebRTC mesh 实现
+   - 每位在线同学一条 RTCPeerConnection；双方各自在 Presence 里看到对方后独立建连，
+     用 id 字典序决定 polite 方，配合 Perfect Negotiation 消除双方同时发 offer 的冲突。
+   - 建连时固定 addTransceiver('video')（结构/顺序恒定），之后开关摄像头只用 replaceTrack，
+     不增删 transceiver，从根本避免 "m-lines order mismatch"。
+   ======================================================================================== */
+function sendSignal(p){
+  if(!roomCh || !rtSubscribed) return;
+  p.from = me.id;
+  try{
+    const pr = roomCh.send({ type:'broadcast', event:'signal', payload:p });
+    if(pr && pr.catch) pr.catch(()=>{});
+  }catch(e){}
+}
+
+function createPC(pid){
+  const rec = {
+    pc:null, polite: me.id > pid,   /* id 字典序靠后的一方在协商冲突时礼让 */
+    makingOffer:false, ignoreOffer:false,
+    pendingCandidates:[], retries:0
+  };
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  rec.pc = pc;
+  pcs.set(pid, rec);
+
+  /* 固定一路视频收发器：即使我没开摄像头也占住 m-line，以后 replaceTrack 无需重协商 */
+  pc.addTransceiver('video', { direction:'sendrecv' });
+  if(camTrack){
+    const sender = pc.getSenders().find(s=>!s.track || s.track.kind==='video');
+    if(sender) sender.replaceTrack(camTrack).catch(()=>{});  /* 我已开摄像头：新同学立刻能看到 */
+  }
+
+  pc.onnegotiationneeded = async ()=>{
+    try{
+      rec.makingOffer = true;
+      await pc.setLocalDescription();                       /* 不传参：按 signalingState 自动建 offer/answer */
+      sendSignal({ kind:'offer', to:pid, sdp:pc.localDescription });
+    }catch(e){
+    }finally{ rec.makingOffer = false; }
+  };
+  pc.onicecandidate = ({candidate})=>{
+    if(candidate) sendSignal({ kind:'candidate', to:pid, candidate });
+  };
+  pc.ontrack = (e)=>{
+    /* receiver.track 整个连接期间不变；对端 replaceTrack(null/新轨) 时它收到 mute/unmute 事件 */
+    const track = e.track;
+    remoteTracks.set(pid, track);
+    const show = ()=>attachRemoteVideo(pid);
+    track.onunmute = show;
+    track.onmute   = show;
+    show();
+  };
+  pc.onconnectionstatechange = ()=>{
+    /* 网络变化导致 ICE 失败：整条重建（最多 2 次，避免对称 NAT 下死循环） */
+    if(pc.connectionState==='failed' && rec.retries < 2){
+      rec.retries++;
+      setTimeout(()=>{
+        if(pcs.get(pid)===rec && peers.has(pid)){ closePC(pid); createPC(pid); }
+      }, 1500);
+    }
+  };
+  return pc;
+}
+
+function closePC(pid){
+  const rec = pcs.get(pid);
+  if(rec){
+    try{ rec.pc.onconnectionstatechange = null; rec.pc.close(); }catch(e){}
+  }
+  pcs.delete(pid);
+  remoteTracks.delete(pid);
+  attachRemoteVideo(pid);    /* 若其窗口还在，回退为头像 */
+}
+
+/* Presence 名单变化后对账：新人建连，消失的关闭 */
+function syncWebRTC(){
+  if(!('RTCPeerConnection' in window)) return;
+  for(const id of peers.keys()){ if(!pcs.has(id)) createPC(id); }
+  for(const id of [...pcs.keys()]){ if(!peers.has(id)) closePC(id); }
+}
+
+async function flushCandidates(rec){
+  const q = rec.pendingCandidates;
+  rec.pendingCandidates = [];
+  for(const c of q){ try{ await rec.pc.addIceCandidate(c); }catch(e){} }
+}
+
+/* 收到对端信令（Perfect Negotiation 标准模式） */
+async function handleSignal(m){
+  if(!m || m.to!==me.id || !m.from || m.from===me.id) return;
+  const pid = m.from;
+  if(!peers.has(pid) && !pcs.has(pid)) return;   /* 不认识的人（已离开）丢弃 */
+  let rec = pcs.get(pid);
+  if(!rec) rec = createPC(pid);
+  const pc = rec.pc;
+  try{
+    if(m.kind === 'offer'){
+      const collision = rec.makingOffer || pc.signalingState !== 'stable';
+      rec.ignoreOffer = !rec.polite && collision;
+      if(rec.ignoreOffer) return;                 /* 我正在发 offer：不礼貌方忽略，礼貌方回滚 */
+      await pc.setRemoteDescription(m.sdp);
+      await flushCandidates(rec);
+      await pc.setLocalDescription();
+      sendSignal({ kind:'answer', to:pid, sdp:pc.localDescription });
+    }else if(m.kind === 'answer'){
+      await pc.setRemoteDescription(m.sdp);
+      await flushCandidates(rec);
+    }else if(m.kind === 'candidate' && m.candidate){
+      /* offer 到达前先到的 candidate 先排队，setRemoteDescription 后 flush */
+      if(pc.remoteDescription){ try{ await pc.addIceCandidate(m.candidate); }catch(e){} }
+      else rec.pendingCandidates.push(m.candidate);
+    }
+  }catch(e){}
+}
+
+/* 把对端视频轨道挂到其窗口：有画面显视频、无画面（未开/关闭摄像头）显头像 */
+function attachRemoteVideo(pid){
+  const tile = document.querySelector('#tiles .tile[data-id="'+(window.CSS?CSS.escape(pid):pid)+'"]');
+  if(!tile) return;
+  const v = tile.querySelector('video.rv');
+  if(!v) return;
+  const av = tile.querySelector('.avatar');
+  const track = remoteTracks.get(pid);
+  if(track && track.readyState==='live' && !track.muted){
+    const old = v.srcObject instanceof MediaStream ? v.srcObject : null;
+    if(!old || old.getVideoTracks()[0] !== track){
+      v.srcObject = new MediaStream([track]);
+      v.play().catch(()=>{});
+    }
+    v.style.display='block'; av.style.display='none';
+  }else{
+    v.style.display='none'; av.style.display='flex';
+  }
+}
+function attachAllRemoteVideos(){
+  remoteTracks.forEach((_,id)=>attachRemoteVideo(id));
+}
+/* 调试/状态观测钩子（仅用于排查连接，不承载业务逻辑） */
+window.__rtc = { pcs, remoteTracks };
 
 /* ---- 摄像头：getUserMedia 本地采集（画面只在自己的窗口实时显示，房间内同步开关状态） ---- */
 let stream=null;
@@ -1156,15 +1316,27 @@ async function setCamera(on){
       $('#camToggle').checked=false;
       return;
     }
+    camTrack = stream.getVideoTracks()[0] || null;
     video.srcObject=stream;
     await video.play().catch(()=>{});
     me.cam=true;
+    /* 已建连的同学：替换发送轨即可，对方收到 unmute 自动出画面，无需重新协商 */
+    for(const rec of pcs.values()){
+      const sender = rec.pc.getSenders().find(s=>!s.track || s.track.kind==='video');
+      if(sender && camTrack) sender.replaceTrack(camTrack).catch(()=>{});
+    }
     renderTiles(); attachMyVideo();
     pushPresence(true);
-    $('#camStatus').textContent='已开启：房间同学能看到你的摄像头状态';
+    $('#camStatus').textContent='已开启：房间同学可以看到你的画面';
   }else{
     me.cam=false;
+    /* 先摘除轨道（对方画面回退头像），再真正停掉摄像头（指示灯熄灭） */
+    for(const rec of pcs.values()){
+      const sender = rec.pc.getSenders().find(s=>s.track && s.track.kind==='video');
+      if(sender) sender.replaceTrack(null).catch(()=>{});
+    }
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    camTrack=null;
     video.srcObject=null;
     renderTiles();
     pushPresence(true);
@@ -1182,42 +1354,6 @@ $('#nickInput').addEventListener('input', e=>{
   renderTiles();
   pushPresence(false);
 });
-
-/* ---- 直播间名称（Realtime Broadcast，最后编辑者生效，本地存一份） ---- */
-/* 去重用消息签名（时间戳+发送者+名称），不能用本地存储的时间戳对比——
-   同机多标签页共享 localStorage，会把刚收到的新消息误判成重复 */
-let lastRoomSig = '';
-(function initLastRoomSig(){
-  const r0 = storeGet(ROOM_KEY,null);
-  if(r0 && r0.name) lastRoomSig = r0.ts+'|'+r0.by+'|'+r0.name;
-})();
-function applyRoomName(room, fromSelf){
-  if(!room || !room.name) return;
-  const sig = room.ts+'|'+room.by+'|'+room.name;
-  if(sig === lastRoomSig) return;                 // 同一条消息（含多人同时回应）只应用一次
-  if(document.activeElement === $('#roomNameInput') && !fromSelf) return; // 我正在编辑时不被覆盖
-  lastRoomSig = sig;
-  $('#roomNameInput').value = room.name;
-  /* 收到的名称也持久化到本机：这样任何在线同学都能向以后加入的新同学转发同一房间名 */
-  storeSet(ROOM_KEY, room);
-}
-$('#roomNameInput').addEventListener('change', ()=>{
-  const name=$('#roomNameInput').value.trim()||'HanYIF 自习直播间';
-  const room={name,ts:Date.now(),by:me.id};
-  lastRoomSig = room.ts+'|'+room.by+'|'+room.name;
-  storeSet(ROOM_KEY,room);
-  try{
-    if(roomCh && rtSubscribed){
-      const p = roomCh.send({type:'broadcast', event:'room', payload:room});
-      if(p && p.catch) p.catch(()=>{});           /* 偶发发送失败不弹未捕获错误 */
-    }
-  }catch(e){}
-});
-/* 进入页面时读取一次本机保存的直播间名称 */
-(function initRoomName(){
-  const r=storeGet(ROOM_KEY,null);
-  if(r && r.name) $('#roomNameInput').value=r.name;
-})();
 
 /* ---- 视频窗口网格渲染 ---- */
 let rosterSig='';
@@ -1238,7 +1374,7 @@ function renderTiles(){
   $('#tiles').innerHTML=users.map(u=>{
     const isSelf = u.id===me.id;
     return `<div class="tile" data-id="${u.id}">
-      <video class="my-video" autoplay muted playsinline style="display:none"></video>
+      <video class="${isSelf?'my-video':'rv'}" autoplay muted playsinline style="display:none"></video>
       <div class="avatar" style="background:${avatarColor(u.id)}">${escapeHtml((u.name||'?').slice(0,1))}</div>
       <div class="tile-bar">
         <span class="dot ${u.cam?'':'off'}"></span>
@@ -1248,6 +1384,7 @@ function renderTiles(){
     </div>`;
   }).join('');
   attachMyVideo();
+  attachAllRemoteVideos();    /* 名单 DOM 重建后，把已有远端画面重新挂回去 */
   updateOnlineCount(users.length);
 }
 function updateOnlineCount(n){
@@ -1270,13 +1407,6 @@ function attachMyVideo(){
 
 /* ---- 实时房间生命周期：进入页面加入，切回标签页补报，关闭/隐藏时离开 ---- */
 initRoom();
-/* 每 60 秒把本机保存的房间名轻量重发一次：即使某次广播被网络丢弃也会自愈，
-   接收端按签名去重，名称没变化时任何人的界面都不会抖动 */
-setInterval(()=>{
-  if(!roomCh || !rtSubscribed) return;
-  const r = storeGet(ROOM_KEY,null);
-  if(r && r.name){ try{ roomCh.send({type:'broadcast',event:'room',payload:r}).catch(()=>{}); }catch(e){} }
-},60000);
 document.addEventListener('visibilitychange',()=>{
   /* 手机/后台标签页恢复时，Presence 可能已过期，重新上报一次 */
   if(!document.hidden && rtSubscribed) trackNow();
