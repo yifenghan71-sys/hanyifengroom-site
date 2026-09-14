@@ -852,6 +852,7 @@ try{
 
 const EXAM_MAX = 10;
 let currentNick = null;         // 当前登录昵称（确认后才赋值）
+let nickConfirmed = false;      // 用户是否已通过昵称弹窗确认过（用于双人模式下区分"还没输入"和"输入了但不对"）
 let exams = [];                 // 当前昵称名下的项目：{id, name, date:'YYYY-MM-DD'}
 /* 面板状态：login=未登录 / loading=加载中 / ok=正常 / error=请求失败 / noconfig=未配置后端 */
 let examState = 'login';
@@ -884,6 +885,7 @@ function submitNick(){
   if(!nick){ toast('请输入昵称'); nickLoginInput.focus(); return; }
   if(nick.length > 16){ toast('昵称最多 16 个字符'); return; }
   currentNick = nick;
+  nickConfirmed = true;           /* 标记：用户已主动确认过昵称 */
   loadRetry = 0;                  /* 每次提交昵称都重新获得 3 次加载机会 */
   storeSet(NICK_KEY, nick);               /* 记住昵称，下次自动填充 */
   syncRoomNickFromLogin(nick);            /* 同一昵称同步到直播间窗口，并实时上报给房间 */
@@ -1194,7 +1196,19 @@ function onPresenceSync(){
   dualActive = !!aMem;
   if(dualActive){
     const iAmAllowed = me.id===aMem.id || (!!bMem && me.id===bMem.id);
-    if(!iAmAllowed){ blockDual(); return; }
+    if(!iAmAllowed){
+      /* 关键：如果用户还没在昵称弹窗里确认过昵称，就先弹输入框让其输入暗号，
+         而不是直接显示"就不让你进来"——否则第二个人根本没机会输入"飞得真高"。
+         提交昵称后 sync 会重新走到这里，那时仍不是 A/B 才真正拦截。 */
+      if(!nickConfirmed){
+        $('#dualMask').style.display='none';
+        nickModal.style.zIndex = '10001';   /* 盖过 dualMask(9999) */
+        if(!nickModal.classList.contains('show')) openNickModal('');
+        return;
+      }
+      blockDual();
+      return;
+    }
     /* 我之前被拦（刚换对昵称 / A 刚回来）：解除遮罩并重新上线 */
     if(dualBlocked){
       dualBlocked=false; $('#dualMask').style.display='none';
