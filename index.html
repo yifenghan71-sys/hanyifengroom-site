@@ -1186,7 +1186,9 @@ function onPresenceSync(){
   }).filter(Boolean)
     .sort((a,b)=> a.seq-b.seq || (a.id<b.id?-1:a.id>b.id?1:0));
 
-  /* ---- 彩蛋：双人模式（roster 已按进入序号排序，重名时最早进入的占席，所有客户端结论一致） ---- */
+  /* ---- 彩蛋：双人模式（roster 已按进入序号排序，重名时最早进入的占席，所有客户端结论一致） ----
+     不论当前已有多少人：A 一出现，其他人立刻被"就不让你进来"整页遮罩并自行下线，
+     不受 20 人上限影响（A 作为第 21 人进入也不会被满员拦），画面立即只剩 A、B 两人。 */
   const aMem = roster.find(u=>u.name===MAGIC_A);   /* 房间里第一个"韩逸峰会飞" */
   const bMem = roster.find(u=>u.name===MAGIC_B);   /* 房间里第一个"飞得真高" */
   dualActive = !!aMem;
@@ -1198,14 +1200,19 @@ function onPresenceSync(){
       dualBlocked=false; $('#dualMask').style.display='none';
       trackNow();
     }
+    /* 房间只保留 A、B 两个窗口：其他人无论是否已从 Presence 过期，都不再渲染/连视频 */
+    const allowIds = new Set([aMem.id]);
+    if(bMem) allowIds.add(bMem.id);
+    roster = roster.filter(u=>allowIds.has(u.id));
   }else if(dualBlocked){
     /* A 已离开，双人模式解除，自动放回房间 */
     dualBlocked=false; $('#dualMask').style.display='none';
     trackNow();
   }
 
-  /* 超额且我排在最后一名：我是该离开的第 21 人（序号相同时按 id 字典序兜底，所有人结论一致） */
-  if(roster.length > MAX_ROOM && roster[roster.length-1].id === me.id){
+  /* 普通模式下才执行 20 人上限：超额且我排在最后一名，我是该离开的第 21 人
+     （序号相同时按 id 字典序兜底，所有人结论一致） */
+  if(!dualActive && roster.length > MAX_ROOM && roster[roster.length-1].id === me.id){
     blockRoom();
     return;
   }
