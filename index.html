@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HanYIF的学习室</title>
+<!-- 网页小图标（纯文本 emoji，无需外部资源） -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>" />
+<style>
+/* ============================================================
+   HanYIF的学习室 —— 样式表
+   设计基调：浅灰白、简约安静、无花哨装饰
+   布局：顶部标题+时钟；主体三栏（左状态 / 中作息表 / 右倒计时+直播间）
+   ============================================================ */
+:root{
+  --bg:#f4f6f8;          /* 页面浅灰底 */
+  --card:#ffffff;        /* 卡片白 */
+  --ink:#262d36;         /* 主文字 */
+  --sub:#7b8794;         /* 次要文字 */
+  --line:#e7eaef;        /* 分隔线 */
+  --accent:#3f6ea5;      /* 安静的墨蓝主色 */
+  --accent-dark:#2f5685;
+  --accent-soft:#e9f1fb; /* 主色浅底 */
+  --now:#e8f1fc;         /* 当前时段高亮底 */
+  --green:#4fa86b;
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC","Hiragino Sans GB",sans-serif;
+  font-size:14px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;}
+input,select{font-family:inherit;font-size:13px;}
+
+/* ---------------- 顶部栏 ---------------- */
+.topbar{
+  max-width:1600px;margin:0 auto;
+  padding:24px 30px 12px;
+  display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
+}
+.brand h1{font-size:26px;font-weight:700;letter-spacing:1px;}
+.brand p{color:var(--sub);font-size:13px;margin-top:4px;letter-spacing:.5px;}
+.clock{text-align:right;}
+#clockTime{
+  font-size:36px;font-weight:700;letter-spacing:2px;
+  font-variant-numeric:tabular-nums;line-height:1.1;
+}
+#clockDate{color:var(--sub);font-size:13px;margin-top:4px;letter-spacing:.5px;}
+
+/* ---------------- 三栏主体 ---------------- */
+.layout{
+  max-width:1600px;margin:0 auto;
+  padding:10px 30px 44px;
+  display:grid;gap:18px;
+  grid-template-columns:292px minmax(0,1fr) 324px;
+  align-items:start;
+}
+.panel{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:0 1px 3px rgba(30,40,60,.04);
+}
+.panel-hd{
+  padding:16px 20px 12px;
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+.panel-hd h2{font-size:15px;font-weight:650;letter-spacing:.5px;}
+.panel-hd .hint{font-size:12px;color:var(--sub);}
+.panel-bd{padding:16px 20px 18px;}
+.left-col,.right-col{display:flex;flex-direction:column;gap:18px;min-width:0;}
+
+/* ---------------- 左侧：当前状态 ---------------- */
+.stage-label{font-size:12px;color:var(--sub);letter-spacing:1px;}
+#stageName{font-size:22px;font-weight:700;margin:6px 0 2px;}
+#stageRange{font-size:13px;color:var(--sub);}
+.countdown-wrap{margin:14px 0 10px;}
+.countdown-cap{font-size:12px;color:var(--sub);}
+#stageRemain{
+  font-size:44px;font-weight:700;color:var(--accent);
+  font-variant-numeric:tabular-nums;letter-spacing:1px;line-height:1.15;
+}
+.progress{height:6px;background:#eef1f5;border-radius:99px;overflow:hidden;margin-top:10px;}
+.progress i{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .6s linear;}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px dashed var(--line);font-size:13px;}
+.kv:first-of-type{margin-top:12px;}
+.kv .k{color:var(--sub);flex:none;}
+.kv .v{text-align:right;font-weight:600;}
+.kv .v small{color:var(--sub);font-weight:400;margin-left:6px;}
+
+/* 开关（自动铃声 / 摄像头通用） */
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0 4px;}
+.switch-row .lab{font-size:13px;font-weight:600;}
+.switch-row .sub{font-size:12px;color:var(--sub);}
+.switch{position:relative;display:inline-block;width:42px;height:23px;flex:none;}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;}
+.switch i{
+  position:absolute;inset:0;background:#cfd6de;border-radius:99px;transition:background .2s;
+}
+.switch i::after{
+  content:"";position:absolute;left:3px;top:3px;width:17px;height:17px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .2s;
+}
+.switch input:checked + i{background:var(--accent);}
+.switch input:checked + i::after{transform:translateX(19px);}
+
+.test-row{display:flex;gap:8px;margin-top:12px;}
+.test-row select{
+  flex:1;min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
+}
+.btn{
+  border:1px solid var(--line);background:#f7f9fb;color:var(--ink);
+  padding:7px 14px;border-radius:8px;font-size:13px;transition:all .15s;white-space:nowrap;
+}
+.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn.primary:hover{background:var(--accent-dark);color:#fff;}
+.audio-state{font-size:12px;color:var(--sub);margin-top:8px;}
+/* 暂停铃声按钮：醒目、全宽、带状态切换 */
+.pause-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;margin-top:14px;padding:11px 14px;
+  border:none;border-radius:10px;font-size:15px;font-weight:700;letter-spacing:1px;
+  color:#fff;background:#d06060;
+  box-shadow:0 2px 8px rgba(208,96,96,.35);
+  transition:all .18s;
+}
+.pause-btn:hover{background:#c44a4a;box-shadow:0 3px 12px rgba(208,96,96,.45);}
+.pause-btn:active{transform:scale(.98);}
+.pause-btn.paused{background:var(--green);box-shadow:0 2px 8px rgba(79,168,107,.35);}
+.pause-btn.paused:hover{background:#3d8a54;}
+.pause-btn .pause-icon{font-size:18px;line-height:1;}
+
+/* ---------------- 中央：作息时间表 ---------------- */
+.sch-panel{min-width:0;}
+.sch-table-wrap{max-height:calc(100vh - 188px);overflow-y:auto;}
+table.sch{width:100%;border-collapse:collapse;}
+.sch th,.sch td{padding:10px 20px;text-align:left;border-bottom:1px solid #f0f2f5;vertical-align:middle;}
+.sch th{
+  position:sticky;top:0;background:#fafbfc;z-index:1;
+  font-size:12px;color:var(--sub);font-weight:600;letter-spacing:1px;
+}
+.sch td.t{width:150px;white-space:nowrap;font-variant-numeric:tabular-nums;color:#41505f;font-weight:600;}
+.sch td.n{font-weight:600;}
+.sch td.b{width:270px;}
+.sch tr{transition:background .3s;}
+.sch tr.next-stage td{background:#f7f9fc;}
+.sch tr.now-stage td{background:var(--now);}
+.sch tr.now-stage td:first-child{box-shadow:inset 3px 0 0 var(--accent);}
+.sch tr.now-stage td.n::after{content:"进行中";font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 7px;margin-left:10px;font-weight:400;}
+.bell-tag{
+  display:inline-block;font-size:12px;color:#5b6b7d;background:#f2f5f8;
+  border-radius:6px;padding:2px 8px;margin:2px 6px 2px 0;cursor:pointer;transition:all .15s;
+}
+.bell-tag:hover{background:var(--accent-soft);color:var(--accent);}
+.bell-tag.mute{cursor:default;color:#aab3bd;background:transparent;}
+.sch tr.now-stage .bell-tag{background:#dbe7f6;color:var(--accent-dark);}
+
+/* ---------------- 右侧：考试倒计时 ---------------- */
+.exam-item{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 0;border-bottom:1px dashed var(--line);
+}
+.exam-item:last-child{border-bottom:none;}
+.exam-name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;}
+.exam-name .del{
+  border:none;background:none;color:#c2c9d1;font-size:15px;line-height:1;padding:2px;
+}
+.exam-name .del:hover{color:#d06060;}
+.exam-date{font-size:12px;color:var(--sub);margin-top:2px;font-variant-numeric:tabular-nums;}
+.exam-days{text-align:right;flex:none;}
+.exam-days b{font-size:26px;color:var(--accent);font-variant-numeric:tabular-nums;}
+.exam-days span{font-size:12px;color:var(--sub);margin-left:3px;}
+.exam-days .sub-time{display:block;font-size:11px;color:var(--sub);font-variant-numeric:tabular-nums;}
+.exam-item.nearest{background:var(--accent-soft);margin:0 -10px;padding:11px 10px;border-radius:10px;border-bottom:none;}
+.exam-item.passed{opacity:.55;}
+.exam-item.passed .exam-days b{color:var(--sub);font-size:15px;}
+.exam-empty{font-size:13px;color:var(--sub);padding:8px 0;}
+.exam-form{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:8px;}
+.exam-form input{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:#fff;
+}
+.exam-form input:focus{outline:none;border-color:var(--accent);}
+.exam-form .row2{display:flex;gap:8px;}
+.exam-form .row2 input{flex:1;min-width:0;}
+
+/* ---------------- 右侧：学习直播间 ---------------- */
+#roomNameInput{
+  font-size:15px;font-weight:650;border:1px solid transparent;background:transparent;
+  color:var(--ink);border-radius:6px;padding:2px 6px;margin:-2px 0 -2px -6px;width:100%;min-width:0;
+}
+#roomNameInput:hover{border-color:var(--line);}
+#roomNameInput:focus{outline:none;border-color:var(--accent);background:#fff;}
+.online-pill{
+  flex:none;font-size:12px;color:var(--green);background:#edf7f0;border-radius:99px;padding:3px 10px;
+  display:flex;align-items:center;gap:6px;font-weight:600;
+}
+.online-pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green);}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;margin-top:6px;}
+.tile{
+  position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;
+  background:#eef1f5;border:1px solid var(--line);
+}
+.tile video,.tile img.peer-frame{width:100%;height:100%;object-fit:cover;display:block;background:#eef1f5;}
+.tile .avatar{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:30px;color:#fff;font-weight:600;letter-spacing:1px;
+}
+.tile-bar{
+  position:absolute;left:0;right:0;bottom:0;padding:16px 8px 6px;
+  font-size:12px;color:#fff;background:linear-gradient(transparent,rgba(20,28,40,.62));
+  display:flex;align-items:center;gap:6px;
+}
+.tile-bar .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tile-bar .me-tag{background:rgba(255,255,255,.25);border-radius:4px;padding:0 5px;font-size:11px;flex:none;}
+.tile-bar .dot{width:7px;height:7px;border-radius:50%;background:#5fd17a;flex:none;}
+.tile-bar .dot.off{background:#b9c2cc;}
+.room-ctrl{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:8px;}
+.room-ctrl label{font-size:12px;color:var(--sub);}
+.room-ctrl input[type=text]{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+}
+.room-ctrl input[type=text]:focus{outline:none;border-color:var(--accent);}
+.cam-status{font-size:12px;color:var(--sub);}
+
+/* ---------------- 昵称登录弹窗 / 编辑弹窗 ---------------- */
+.modal-mask{
+  position:fixed;inset:0;background:rgba(38,45,54,.38);
+  display:none;align-items:center;justify-content:center;z-index:80;padding:20px;
+}
+.modal-mask.show{display:flex;}
+.modal-card{
+  background:#fff;border-radius:16px;width:100%;max-width:360px;
+  padding:26px 24px 22px;box-shadow:0 18px 50px rgba(20,28,40,.22);
+}
+.modal-card h3{font-size:18px;font-weight:700;letter-spacing:.5px;}
+.modal-card .modal-tip{font-size:12.5px;color:var(--sub);margin:8px 0 16px;line-height:1.6;}
+.modal-card input{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+  color:var(--ink);background:#fff;margin-bottom:10px;
+}
+.modal-card input:focus{outline:none;border-color:var(--accent);}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
+.modal-card .modal-actions.single{justify-content:stretch;}
+.modal-card .modal-actions.single .btn{flex:1;padding:10px 0;}
+
+/* 项目倒计时面板：昵称行 + 切换昵称小工具按钮 */
+.cd-me{font-size:12px;color:var(--sub);padding:2px 0 10px;}
+.cd-me b{color:var(--ink);font-weight:600;}
+.cd-tools{display:flex;gap:6px;flex:none;}
+.tool-btn{
+  border:1px solid var(--line);background:#f7f9fb;color:var(--sub);
+  border-radius:7px;padding:3px 9px;font-size:12px;transition:all .15s;
+}
+.tool-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
+.exam-name .edit{
+  border:none;background:none;color:#c2c9d1;font-size:13px;line-height:1;padding:2px;
+}
+.exam-name .edit:hover{color:var(--accent);}
+.exam-state{font-size:13px;color:var(--sub);padding:8px 0;line-height:1.7;}
+.exam-state.err{color:#c05a5a;}
+
+/* ---------------- Toast ---------------- */
+#toastBox{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:70;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
+.toast{
+  background:#2b323b;color:#fff;padding:10px 20px;border-radius:99px;font-size:14px;
+  box-shadow:0 6px 18px rgba(0,0,0,.2);animation:toastIn .3s ease;letter-spacing:.5px;
+}
+@keyframes toastIn{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:none;}}
+
+/* ---------------- 移动端适配 ---------------- */
+@media (max-width:1100px){
+  .layout{grid-template-columns:1fr;padding:10px 16px 40px;}
+  .sch-table-wrap{max-height:none;}
+}
+@media (max-width:600px){
+  .topbar{flex-direction:column;align-items:flex-start;padding:18px 16px 8px;}
+  .clock{text-align:left;}
+  #clockTime{font-size:30px;}
+  .sch th,.sch td{padding:9px 12px;}
+  .sch td.t{width:auto;}
+  .sch td.b{width:auto;}
+  #stageRemain{font-size:38px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ===================== 顶部：标题 + 大时钟 ===================== -->
+<header class="topbar">
+  <div class="brand">
+    <h1>HanYIF的学习室</h1>
+    <p>05:30 起床 / 22:30 熄灯 · 安静自习</p>
+  </div>
+  <div class="clock">
+    <div id="clockTime">--:--:--</div>
+    <div id="clockDate">读取系统时间中…</div>
+  </div>
+</header>
+
+<!-- ===================== 主体三栏 ===================== -->
+<main class="layout">
+
+  <!-- ========== 左栏：当前时段状态 + 铃声控制 ========== -->
+  <aside class="left-col">
+    <section class="panel">
+      <div class="panel-bd">
+        <div class="stage-label">当前时段</div>
+        <div id="stageName">--</div>
+        <div id="stageRange">--</div>
+
+        <div class="countdown-wrap">
+          <div class="countdown-cap">距离本时段结束</div>
+          <div id="stageRemain">--:--</div>
+        </div>
+        <div class="progress"><i id="stageBar"></i></div>
+
+        <div class="kv"><span class="k">下一阶段</span><span class="v" id="nextStage">--</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-bd">
+        <div class="switch-row">
+          <div>
+            <div class="lab">自动铃声</div>
+            <div class="sub">到时间节点自动播放对应铃声</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autoBellToggle" checked />
+            <i></i>
+          </label>
+        </div>
+        <div class="audio-state" id="audioState">铃声状态检测中…</div>
+        <button class="pause-btn" id="bellPauseBtn" style="display:none;">
+          <span class="pause-icon">⏸</span>
+          <span class="pause-text">停止铃声</span>
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ========== 中栏：作息时间表（页面最大最显眼模块） ========== -->
+  <section class="panel sch-panel">
+    <div class="panel-hd">
+      <h2>高中作息表</h2>
+      <span class="hint">蓝色高亮为当前时段 · 点击铃声标签可试听</span>
+    </div>
+    <div class="sch-table-wrap">
+      <table class="sch">
+        <thead>
+          <tr><th class="t">时间</th><th class="n">时段</th><th class="b">铃声</th></tr>
+        </thead>
+        <tbody id="schBody"><!-- 由 JS 根据数据渲染 --></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========== 右栏：考试倒计时 + 学习直播间 ========== -->
+  <aside class="right-col">
+
+    <!-- 项目倒计时（个人私有：按昵称隔离，数据存 Supabase，最多 10 个） -->
+    <section class="panel">
+      <div class="panel-hd">
+        <h2>项目倒计时</h2>
+        <div class="cd-tools" id="cdTools" style="display:none;">
+          <button class="tool-btn" id="switchNickBtn" title="换一个昵称登录">切换昵称</button>
+        </div>
+      </div>
+      <div class="panel-bd">
+        <div class="cd-me" id="cdMe" style="display:none;"></div>
+        <div id="examList"></div>
+        <div class="exam-form">
+          <input type="text" id="examNameInput" placeholder="项目名称，如：期末考试" maxlength="20" />
+          <div class="row2">
+            <input type="date" id="examTimeInput" />
+            <button class="btn primary" id="examAddBtn">添加</button>
+          </div>
+        </div>
+        <div class="exam-empty" id="examLimitTip" style="display:none;text-align:center;">最多添加 10 个项目，删除后可继续添加</div>
+      </div>
+    </section>
+
+    <!-- 学习直播间 -->
+    <section class="panel">
+      <div class="panel-hd">
+        <input type="text" id="roomNameInput" value="HanYIF 自习直播间" maxlength="24" title="点击可编辑直播间名称" />
+        <span class="online-pill" id="onlinePill">1 人在线</span>
+      </div>
+      <div class="panel-bd">
+        <div class="tiles" id="tiles"><!-- 用户视频窗口由 JS 渲染 --></div>
+        <div class="room-ctrl">
+          <label>我的昵称（展示在视频窗口上）</label>
+          <input type="text" id="nickInput" maxlength="12" placeholder="输入昵称" />
+          <div class="switch-row">
+            <div>
+              <div class="lab">开启摄像头</div>
+              <div class="cam-status" id="camStatus">关闭：仅挂在房间自习</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="camToggle" />
+              <i></i>
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<!-- ========== 昵称登录弹窗（无密码；确认的这一次点击同时完成音频解锁） ========== -->
+<div class="modal-mask" id="nickModal">
+  <div class="modal-card">
+    <h3>输入你的昵称</h3>
+    <p class="modal-tip">昵称无密码，用于加载只属于你的项目倒计时。<br/>浏览器会记住昵称，下次打开自动填充。</p>
+    <input type="text" id="nickLoginInput" maxlength="16" placeholder="例如：HanYIF" autocomplete="off" />
+    <div class="modal-actions single">
+      <button class="btn primary" id="nickLoginBtn">确认昵称</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 项目编辑弹窗 ========== -->
+<div class="modal-mask" id="editModal">
+  <div class="modal-card">
+    <h3>编辑项目</h3>
+    <p class="modal-tip">修改项目名称或日期后保存。</p>
+    <input type="text" id="editNameInput" maxlength="20" placeholder="项目名称" />
+    <input type="date" id="editDateInput" />
+    <div class="modal-actions">
+      <button class="btn" id="editCancelBtn">取消</button>
+      <button class="btn primary" id="editSaveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastBox"></div>
+
+<!-- Supabase 官方客户端（v2）随网站同域部署，避免国内访问 jsdelivr CDN 失败；
+     无法加载时仅"项目倒计时"云同步不可用，其它功能不受影响 -->
+<script src="vendor/supabase.min.js"></script>
+<script>
+/* ============================================================
+   HanYIF的学习室 —— 主脚本
+   模块划分：
+   1. 工具函数 &amp; 全局常量
+   2. 作息数据（写死只读，全局统一展示）
+   3. 时钟 &amp; 当前时段高亮 / 倒计时
+   4. MP3 铃声播放 + 到点自动播放（音频在"确认昵称"点击时解锁）
+   5. 昵称登录 + 项目倒计时（Supabase 云端，按昵称隔离，可新增/编辑/删除）
+   6. 学习直播间（Supabase Realtime Presence：跨互联网在线名单 / 昵称 / 摄像头状态同步）
+   ============================================================ */
+(function(){
+'use strict';
+
+/* ================== 1. 工具函数 ================== */
+const $  = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const pad = n => String(n).padStart(2,'0');
+const toMin = hhmm => { const [h,m]=hhmm.split(':').map(Number); return h*60+m; }; // "07:40" -> 460
+const DAY = 24*60*60*1000;
+
+/* localStorage 读写（带 JSON 容错，file:// 下同样可用） */
+function storeGet(key, def){
+  try{ const v = localStorage.getItem(key); return v===null ? def : JSON.parse(v); }
+  catch(e){ return def; }
+}
+function storeSet(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+}
+
+/* 顶部弹出提示 */
+function toast(msg, ms){
+  const box = $('#toastBox');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .4s'; setTimeout(()=>el.remove(),420); }, ms||4200);
+}
+
+/* ================== 2. 作息数据 ==================
+ * 每一行：point 表示“时间点事件”（起床/熄灯），其余为时段
+ * bells：该时间节点要播放的铃声（label 显示用，sound 对应 MP3 文件映射）
+ */
+const ROWS = [
+  {id:'wake', point:true, time:'05:30', name:'起床',
+   bells:[{t:'05:30', label:'起床铃', sound:'wake'}]},
+  {id:'wash',    start:'05:30', end:'06:00', name:'洗漱、整理内务', bells:[]},
+  {id:'morning', start:'06:00', end:'07:00', name:'自习',
+   bells:[{t:'06:00', label:'早自习上课铃', sound:'class'},
+          {t:'07:00', label:'早自习下课铃', sound:'over'}]},
+  {id:'breakfast', start:'07:00', end:'07:40', name:'早餐', bells:[]},
+  {id:'p1', start:'07:40', end:'08:25', name:'第一节课',
+   bells:[{t:'07:40', label:'上课铃', sound:'class'}, {t:'08:25', label:'下课铃', sound:'over'}]},
+  {id:'p2', start:'08:35', end:'09:20', name:'第二节课',
+   bells:[{t:'08:35', label:'上课铃', sound:'class'}, {t:'09:20', label:'下课铃', sound:'over'}]},
+  {id:'exercise', start:'09:20', end:'09:45', name:'活动', bells:[]},
+  {id:'p3', start:'09:45', end:'10:30', name:'第三节课',
+   bells:[{t:'09:45', label:'上课铃', sound:'class'}, {t:'10:30', label:'下课铃', sound:'over'}]},
+  {id:'p4', start:'10:40', end:'11:25', name:'第四节课',
+   bells:[{t:'10:40', label:'上课铃', sound:'class'}, {t:'11:25', label:'下课铃', sound:'over'}]},
+  {id:'lunch', start:'11:25', end:'14:00', name:'午餐 + 午休', bells:[]},
+  {id:'p5', start:'14:00', end:'14:45', name:'第五节课',
+   bells:[{t:'14:00', label:'上课铃', sound:'class'}, {t:'14:45', label:'下课铃', sound:'over'}]},
+  {id:'p6', start:'14:55', end:'15:40', name:'第六节课',
+   bells:[{t:'14:55', label:'上课铃', sound:'class'}, {t:'15:40', label:'下课铃', sound:'over'}]},
+  {id:'breakafternoon', start:'15:40', end:'16:00', name:'活动', bells:[]},
+  {id:'p7', start:'16:00', end:'16:45', name:'第七节课',
+   bells:[{t:'16:00', label:'上课铃', sound:'class'}, {t:'16:45', label:'下课铃', sound:'over'}]},
+  {id:'p8', start:'16:55', end:'17:40', name:'第八节课',
+   bells:[{t:'16:55', label:'上课铃', sound:'class'}, {t:'17:40', label:'下课铃', sound:'over'}]},
+  {id:'dinner', start:'17:40', end:'18:30', name:'晚餐', bells:[]},
+  {id:'evening', start:'18:30', end:'21:50', name:'自习',
+   bells:[{t:'18:30', label:'晚自习上课铃', sound:'class'},
+          {t:'21:50', label:'晚自习下课铃', sound:'over'}]},
+  {id:'washnight', start:'21:50', end:'22:30', name:'洗漱', bells:[]},
+  {id:'sleep', point:true, time:'22:30', name:'熄灯就寝',
+   bells:[{t:'22:30', label:'就寝铃', sound:'bed'}]}
+];
+
+/* 供逻辑计算使用的“时段区间”列表（额外补一个跨夜的熄灯就寝区间） */
+const PERIODS = ROWS.filter(r=>!r.point).map(r=>({
+  id:r.id, name:r.name,
+  sMin:toMin(r.start), eMin:toMin(r.end),
+  sText:r.start, eText:r.end
+}));
+PERIODS.push({id:'sleep', name:'熄灯就寝', sMin:22*60+30, eMin:24*60+5*60+30, sText:'22:30', eText:'次日 05:30'});
+PERIODS.sort((a,b)=>a.sMin-b.sMin);
+
+/* 铃声节点表：{ "07:40": [{label,sound}, ...] } */
+const BELLS = {};
+ROWS.forEach(r=>{
+  (r.bells||[]).forEach(b=>{
+    (BELLS[b.t] = BELLS[b.t] || []).push({label:b.label, sound:b.sound});
+  });
+});
+
+/* ================== 3. 时钟 / 当前时段 / 倒计时 ================== */
+
+/* 渲染中央作息表（只渲染一次，之后只切换高亮类名） */
+function renderSchedule(){
+  const tb = $('#schBody');
+  tb.innerHTML = ROWS.map(r=>{
+    const timeCell = r.point ? r.time : `${r.start} <span style="color:#b3bcc6;font-weight:400">–</span> ${r.end}`;
+    const bellCell = (!r.bells || !r.bells.length)
+      ? '<span class="bell-tag mute">—</span>'
+      : r.bells.map(b=>`<span class="bell-tag" data-sound="${b.sound}" title="点击试听">${b.t} ${b.label}</span>`).join('');
+    return `<tr data-id="${r.id}"><td class="t">${timeCell}</td><td class="n">${r.name}</td><td class="b">${bellCell}</td></tr>`;
+  }).join('');
+}
+
+/* 根据当前时间找到所处时段（凌晨 00:00–05:30 归入跨夜的“熄灯就寝”）
+ * 课表相邻时段之间的 10 分钟空隙（如 08:25–08:35）归入“课间休息” */
+function findPeriod(date){
+  let m = date.getHours()*60 + date.getMinutes();
+  if(m < toMin('05:30')) m += 1440;
+  const hit = PERIODS.find(p => m >= p.sMin && m < p.eMin);
+  if(hit) return hit;
+  /* 落在两段之间：用前一段结束~下一段开始合成一个“课间休息”时段 */
+  const next = PERIODS.find(p => m < p.sMin);
+  const prev = [...PERIODS].reverse().find(p => m >= p.eMin);
+  if(next && prev){
+    const hh = Math.floor(prev.eMin/60), mm = prev.eMin%60;
+    const prevEndText = `${pad(hh)}:${pad(mm)}`;
+    return {id:'gap', name:'课间休息', sMin:prev.eMin, eMin:next.sMin,
+            sText:prevEndText, eText:next.sText};
+  }
+  return PERIODS[0]; // 理论上不会到达，兜底
+}
+
+/* 秒数格式化为 H:MM:SS 或 MM:SS */
+function fmtRemain(sec){
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+/* 每秒刷新：时钟、左栏状态、表格高亮 */
+let lastSecondKey = '';
+function tick(){
+  const d = new Date();
+  const key = d.toTimeString().slice(0,8);
+  const isNewSecond = key !== lastSecondKey;
+  lastSecondKey = key;
+
+  /* ---- 顶部大时钟 ---- */
+  const weeks = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  $('#clockTime').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  $('#clockDate').textContent = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 · ${weeks[d.getDay()]}`;
+
+  /* ---- 当前时段 ---- */
+  const cur = findPeriod(d);
+  $('#stageName').textContent = cur.name;
+  $('#stageRange').textContent = `${cur.sText} – ${cur.eText}`;
+
+  let mAdj = d.getHours()*60+d.getMinutes();
+  if(mAdj < toMin('05:30')) mAdj += 1440;
+  const elapsedSec = (mAdj-cur.sMin)*60 + d.getSeconds();
+  const totalSec   = (cur.eMin-cur.sMin)*60;
+  $('#stageRemain').textContent = fmtRemain(totalSec-elapsedSec);
+  $('#stageBar').style.width = (elapsedSec/totalSec*100).toFixed(2) + '%';
+
+  /* ---- 下一阶段（跨夜循环；课间空隙时取紧随其后的时段） ---- */
+  let next;
+  const idx = PERIODS.indexOf(cur);
+  if(idx === -1){
+    next = PERIODS.find(p => mAdj < p.sMin) || PERIODS[0];
+  }else{
+    next = PERIODS[(idx+1)%PERIODS.length];
+  }
+  $('#nextStage').innerHTML = `${next.name}<small>${next.sText}</small>`;
+
+  /* ---- 项目倒计时：每秒刷新剩余天数 ---- */
+  if(isNewSecond) renderExams();
+
+  /* ---- 表格高亮：当前行蓝底，下一时段浅灰底 ---- */
+  $$('#schBody tr').forEach(tr=>tr.classList.remove('now-stage','next-stage'));
+  const nowRow = document.querySelector(`#schBody tr[data-id="${cur.id}"]`);
+  if(nowRow) nowRow.classList.add('now-stage');
+  const nextRow = document.querySelector(`#schBody tr[data-id="${next.id}"]`);
+  if(nextRow && nextRow !== nowRow) nextRow.classList.add('next-stage');
+
+  /* ---- 整点分钟检查是否到铃声节点（只在秒数为 00 时触发一次） ---- */
+  if(isNewSecond && d.getSeconds()===0){
+    const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const firedKey = d.toDateString() + ' ' + hhmm;
+    if(BELLS[hhmm] && !firedToday.has(firedKey)){
+      firedToday.add(firedKey);
+      /* 同一节点多个铃声进入队列依次播放 */
+      BELLS[hhmm].forEach(b=>queueAutoBell(b));
+    }
+  }
+}
+const firedToday = new Set();   // 今日已触发过的铃声节点（防止重复响铃）
+
+/* ================== 4. 铃声：MP3 文件播放 ==================
+ * 同目录 MP3：1.mp3=起床铃 2.mp3=上课铃 3.mp3=下课铃 4.mp3=就寝铃
+ */
+let ringQueue = Promise.resolve();
+let bellToken = 0;   /* 停止代号：每次 stopAllBells 自增，用于识别本次播放是否已被手动停止 */
+let audioUnlocked = false;  /* 浏览器自动播放策略：用户与页面交互过一次后才允许自动响铃 */
+
+/* MP3 铃声文件映射（文件与 index.html 放在同一目录）
+ * 1.mp3=起床铃  2.mp3=上课铃  3.mp3=下课铃  4.mp3=就寝铃 */
+const BELL_MP3 = { wake:'1.mp3', class:'2.mp3', over:'3.mp3', bed:'4.mp3' };
+/* 正在播放的 MP3 音频元素集合，供统一停止时逐个静音 */
+const activeAudios = new Set();
+
+/* 播放一个 MP3，返回 Promise<是否播放成功>；播放结束/被停止/出错都会结束 */
+function playMp3(url){
+  return new Promise(resolve=>{
+    const audio = new Audio(url);
+    audio.className = 'bell-audio';          // 挂到页面上便于调试，视觉隐藏
+    audio.style.display = 'none';
+    let finished = false;
+    const done = ok => {
+      if(finished) return;
+      finished = true;
+      activeAudios.delete(audio);
+      if(audio.parentNode) audio.parentNode.removeChild(audio);
+      resolve(ok);
+    };
+    audio.addEventListener('ended', ()=>done(true));
+    audio.addEventListener('error', ()=>done(false));
+    /* 程序化 pause()（用户点“停止”）也会触发 pause 事件，借此结束等待 */
+    audio.addEventListener('pause', ()=>{ if(!audio.ended) done(false); });
+    activeAudios.add(audio);
+    document.body.appendChild(audio);
+    audio.play().catch(()=>done(false));
+  });
+}
+
+/* 统一停止铃声：停止所有 MP3，并清空等待队列 */
+function stopAllBells(){
+  bellToken++;   /* 使正在等待中的播放回调失效 */
+  activeAudios.forEach(a=>{
+    try{ a.pause(); a.currentTime = 0; }catch(e){}
+    if(a.parentNode) a.parentNode.removeChild(a);
+  });
+  activeAudios.clear();
+  ringQueue = Promise.resolve();
+}
+
+/* 实际播放一次铃声（所有铃声排队串行，避免同节点铃声叠在一起） */
+function ringBell(bell, fromAuto){
+  const myToken = bellToken;   /* 本次播放的代号；若中途被停止，代号会变化 */
+  ringQueue = ringQueue.then(async()=>{
+    toast(`🔔 ${bell.label}`);
+    /* 自动播放时显示"停止铃声"按钮 */
+    if(fromAuto) showPauseBtn();
+
+    const url = BELL_MP3[bell.sound];
+    if(url){
+      await playMp3(url);
+    }else{
+      toast('未找到对应的铃声文件');
+    }
+
+    /* 播放结束（无论自然结束还是被停止），隐藏停止按钮 */
+    if(bellToken === myToken && fromAuto) hidePauseBtn();
+  });
+  return ringQueue;
+}
+
+/* 自动铃声开关（设置持久化） */
+let autoBellOn = storeGet('sr.autoBell', true);
+$('#autoBellToggle').checked = autoBellOn;
+$('#autoBellToggle').addEventListener('change', e=>{
+  autoBellOn = e.target.checked;
+  storeSet('sr.autoBell', autoBellOn);
+  toast(autoBellOn ? '自动铃声已开启' : '自动铃声已关闭');
+  updateAudioState();
+});
+/* 到点自动响铃：必须已开开关，且已通过“确认昵称”的点击解锁音频 */
+function queueAutoBell(b){ if(autoBellOn && audioUnlocked) ringBell(b,true); }
+
+/* ---- 停止铃声按钮：仅在自动铃声正在播放时出现 ---- */
+const pauseBtn = $('#bellPauseBtn');
+pauseBtn.addEventListener('click', ()=>{
+  stopAllBells();
+  hidePauseBtn();
+  toast('铃声已停止');
+});
+function showPauseBtn(){ pauseBtn.style.display = 'flex'; }
+function hidePauseBtn(){ pauseBtn.style.display = 'none'; }
+
+/* 表格中铃声标签点击：第一次试听、第二次停止、以此类推 */
+let tagPlaying = false;
+let tagPlayId = 0;           // 播放代号，用于区分本次播放是否已被中断
+document.getElementById('schBody').addEventListener('click', e=>{
+  const tag = e.target.closest('.bell-tag');
+  if(!tag || !tag.dataset.sound) return;
+  if(tagPlaying){
+    /* 第二次点击：停止当前铃声 */
+    stopAllBells();
+    tagPlayId++;              /* 使旧播放的回调失效 */
+    tagPlaying = false;
+    toast('铃声已停止');
+  }else{
+    /* 第一次点击：试听（点击本身是用户手势，允许播放） */
+    tagPlaying = true;
+    tagPlayId++;
+    const myId = tagPlayId;
+    ringBell({label:tag.textContent.trim(), sound:tag.dataset.sound}).then(()=>{
+      /* 铃声自然播放结束且未被中途停止时，才重置状态 */
+      if(tagPlayId === myId) tagPlaying = false;
+    });
+  }
+});
+
+/* 铃声状态小字：仅在开关关闭时给出提示；解锁由“确认昵称”点击完成，不再有任何提示弹窗 */
+function updateAudioState(){
+  $('#audioState').textContent = (!audioUnlocked && autoBellOn) ? '提交昵称后启用自动铃声'
+                                  : autoBellOn ? '' : '自动铃声已关闭';
+}
+
+/* 在用户手势（点击“确认昵称”）内调用：一次性解锁浏览器音频自动播放。
+ * 做法：借这次点击播放一个极短的静音音频，让文档获得媒体播放权限；
+ * 此后定时器触发的 MP3 自动响铃、铃声标签试听都可以直接播放。 */
+function unlockAudioByGesture(){
+  audioUnlocked = true;
+  try{
+    const silent = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+    silent.muted = true;
+    const p = silent.play();
+    if(p && p.then) p.then(()=>{ try{ silent.pause(); }catch(e){} }).catch(()=>{});
+  }catch(e){}
+  updateAudioState();
+}
+
+/* ================== 5. 昵称登录 + 项目倒计时（Supabase 云端，按昵称隔离） ==================
+ *
+ * 【【【 首次使用：只需填下面两个常量 】】】
+ *   SUPABASE_URL      ：Supabase 项目 URL，形如 https://xxxxxxxxxxxx.supabase.co
+ *   SUPABASE_ANON_KEY ：Project Settings → API 里的 anon public 密钥（本来就是给浏览器用的公开密钥）
+ *
+ * 然后在 Supabase 的 SQL Editor 里执行一次下面这段建表 SQL（只需执行一次）：
+ *
+ *   -- 个人项目倒计时表：全站只有这一张业务表
+ *   create table if not exists public.countdowns (
+ *     id         uuid primary key default gen_random_uuid(),
+ *     nickname   text not null,          -- 所属昵称（无密码昵称即身份）
+ *     name       text not null,          -- 项目名称
+ *     exam_date  date not null,          -- 项目日期（只到日期，不到时分）
+ *     created_at timestamptz not null default now()
+ *   );
+ *   -- 允许浏览器用 anon 密钥读写（行级隔离靠查询时按 nickname 过滤，见下方数据访问层）
+ *   alter table public.countdowns enable row level security;
+ *   drop policy if exists "cd select" on public.countdowns;
+ *   drop policy if exists "cd insert" on public.countdowns;
+ *   drop policy if exists "cd update" on public.countdowns;
+ *   drop policy if exists "cd delete" on public.countdowns;
+ *   create policy "cd select" on public.countdowns for select using (true);
+ *   create policy "cd insert" on public.countdowns for insert with check (true);
+ *   create policy "cd update" on public.countdowns for update using (true) with check (true);
+ *   create policy "cd delete" on public.countdowns for delete using (true);
+ *
+ * 说明：本网页是无后端的纯静态页，昵称没有密码——知道同一昵称的人会看到同一份清单，
+ * 请把昵称当作“房间号/账号名”使用。
+ * ======================================================================================== */
+/* Supabase 地址：
+ *  - 部署在 Cloudflare Pages（http/https 正式环境）时走【同域反代】 /sb，
+ *    由 functions/sb/[[path]].js 透明转发到 Supabase（含 Realtime WebSocket），
+ *    同学们不直连 supabase.co，无需代理；以后绑定自定义域名也自动跟随，无需再改代码。
+ *  - 本地双击打开（file://）或 localhost 开发时直连官方地址（本机网络需能访问 Supabase）。 */
+const SUPABASE_DIRECT_URL = 'https://bngpewvzgzhcgwdesrce.supabase.co';
+const SUPABASE_URL = location.protocol.startsWith('http')
+  ? location.origin + '/sb'      /* 任何 http(s) 环境（线上 / wrangler 本地模拟）都走同域反代 */
+  : SUPABASE_DIRECT_URL;        /* file:// 双击打开时直连（本机网络需能访问 Supabase） */
+const SUPABASE_ANON_KEY = 'sb_publishable_YP2MphmDLIjdWP3ESiAnEw_hhSmINKR';   // ← 填入 anon public 密钥
+const COUNTDOWN_TABLE = 'countdowns';
+const NICK_KEY = 'sr.nick';     // localStorage 中记住昵称的键
+
+let supa = null;                // Supabase 客户端实例（配置齐全且 CDN 加载成功时才创建）
+try{
+  if(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient){
+    supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+}catch(e){ supa = null; }
+
+const EXAM_MAX = 10;
+let currentNick = null;         // 当前登录昵称（确认后才赋值）
+let exams = [];                 // 当前昵称名下的项目：{id, name, date:'YYYY-MM-DD'}
+/* 面板状态：login=未登录 / loading=加载中 / ok=正常 / error=请求失败 / noconfig=未配置后端 */
+let examState = 'login';
+let examMsg = '';
+
+/* ---------- 日期工具 ---------- */
+/* 显示用日期：YYYY年M月D日 */
+function fmtDT(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+}
+/* date 输入框值格式：YYYY-MM-DD */
+function inputDate(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+/* 项目当天 0 点的时间戳 */
+function examDayMs(dateStr){ return new Date(dateStr+'T00:00:00').getTime(); }
+/* 今天 0 点的时间戳 */
+function todayMs(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- 昵称登录弹窗 ---------- */
+const nickModal = $('#nickModal');
+const nickLoginInput = $('#nickLoginInput');
+function openNickModal(prefill){
+  nickLoginInput.value = prefill || storeGet(NICK_KEY,'') || '';
+  nickModal.classList.add('show');
+  setTimeout(()=>{ nickLoginInput.focus(); nickLoginInput.select(); }, 50);
+}
+function submitNick(){
+  const nick = nickLoginInput.value.trim();
+  if(!nick){ toast('请输入昵称'); nickLoginInput.focus(); return; }
+  if(nick.length > 16){ toast('昵称最多 16 个字符'); return; }
+  currentNick = nick;
+  loadRetry = 0;                  /* 每次提交昵称都重新获得 3 次加载机会 */
+  storeSet(NICK_KEY, nick);               /* 记住昵称，下次自动填充 */
+  syncRoomNickFromLogin(nick);            /* 同一昵称同步到直播间窗口，并实时上报给房间 */
+  unlockAudioByGesture();                 /* 关键：这一次点击同时解锁音频自动播放 */
+  nickModal.classList.remove('show');
+  $('#cdMe').style.display = 'block';
+  $('#cdMe').innerHTML = `当前昵称：<b>${escapeHtml(currentNick)}</b>`;
+  loadExams();
+}
+$('#nickLoginBtn').addEventListener('click', submitNick);
+nickLoginInput.addEventListener('keydown', e=>{ if(e.key==='Enter') submitNick(); });
+/* 切换昵称：重新打开登录弹窗，确认后加载另一昵称的专属清单 */
+$('#switchNickBtn').addEventListener('click', ()=>openNickModal(currentNick));
+
+/* ---------- Supabase 数据访问层（所有增删改查只走这里，按 nickname 隔离） ---------- */
+/* 加载个人项目；网络抖动（如代理刚建立时的偶发 DNS 失败）自动重试，最多共尝试 3 次 */
+let loadRetry = 0;
+async function loadExams(){
+  if(!supa){ examState='noconfig'; renderExams(); return; }
+  examState='loading'; examMsg=''; renderExams();
+  const {data, error} = await supa.from(COUNTDOWN_TABLE)
+    .select('id,name,exam_date')
+    .eq('nickname', currentNick)
+    .order('exam_date', {ascending:true});
+  if(error){
+    if(loadRetry < 2){
+      loadRetry++;
+      examMsg = '网络波动，正在重试（'+loadRetry+'/2）…';
+      examState='loading'; renderExams();
+      setTimeout(loadExams, 2500);   /* 2.5 秒后自动重试，不打扰用户 */
+      return;
+    }
+    examState='error'; examMsg=error.message; renderExams(); return;
+  }
+  loadRetry = 0;                     /* 成功后重置，切换昵称/手动刷新时重新计数 */
+  exams = (data||[]).map(r=>({id:r.id, name:r.name, date:r.exam_date}));
+  examState='ok'; renderExams();
+}
+
+async function dbInsert(name, date){
+  return await supa.from(COUNTDOWN_TABLE)
+    .insert({nickname:currentNick, name, exam_date:date}).select().single();
+}
+async function dbUpdate(id, patch){
+  return await supa.from(COUNTDOWN_TABLE)
+    .update(patch).eq('id',id).eq('nickname',currentNick).select().single();
+}
+async function dbDelete(id){
+  return await supa.from(COUNTDOWN_TABLE).delete().eq('id',id).eq('nickname',currentNick);
+}
+
+/* ---------- 渲染 ---------- */
+function renderExams(){
+  const box = $('#examList');
+  const form = $('.exam-form');
+  const tools = $('#cdTools');
+  const meLine = $('#cdMe');
+
+  /* 未登录 / 加载中 / 出错 / 未配置：给出对应状态，不显示表单和工具按钮 */
+  if(examState !== 'ok'){
+    tools.style.display = 'none';
+    meLine.style.display = currentNick ? 'block' : 'none';
+    form.style.display = 'none';
+    $('#examLimitTip').style.display = 'none';
+    const map = {
+      login:   '<div class="exam-state">提交昵称后，这里会显示只属于你的项目倒计时。</div>',
+      loading: '<div class="exam-state">'+(examMsg ? escapeHtml(examMsg) : '正在加载你的项目…')+'</div>',
+      noconfig:'<div class="exam-state err">尚未配置 Supabase 数据库。<br/>请在网页代码里填写 SUPABASE_URL 与 SUPABASE_ANON_KEY（见代码中的建表说明）。</div>',
+      error:   `<div class="exam-state err">加载失败：${escapeHtml(examMsg)}<br/>请检查网络或 Supabase 配置。</div>`
+    };
+    box.innerHTML = map[examState] || '';
+    return;
+  }
+
+  tools.style.display = 'flex';
+  meLine.style.display = 'block';
+
+  const nowMs = Date.now();
+  exams.sort((a,b)=>examDayMs(a.date)-examDayMs(b.date));
+  /* 最近一场尚未到日期的项目，用于高亮 */
+  const nearestId = (exams.find(x=>examDayMs(x.date)>todayMs())||{}).id;
+  if(!exams.length){ box.innerHTML='<div class="exam-empty">还没有项目，在下方添加一个吧。</div>'; }
+  else box.innerHTML = exams.map(x=>{
+    const diff = examDayMs(x.date)-nowMs;
+    let right;
+    if(diff<=0){
+      right = '<b>就是今天</b>';
+    }else{
+      const days = Math.ceil(diff/DAY);
+      right = `<b>${days}</b><span>天</span>`;
+    }
+    return `<div class="exam-item ${x.id===nearestId?'nearest':''} ${diff<=0?'passed':''}">
+      <div>
+        <div class="exam-name">${escapeHtml(x.name)}
+          <button class="edit" data-act="edit" data-id="${x.id}" title="编辑">✎</button>
+          <button class="del" data-act="del" data-id="${x.id}" title="删除">×</button>
+        </div>
+        <div class="exam-date">${fmtDT(x.date)}</div>
+      </div>
+      <div class="exam-days">${right}</div>
+    </div>`;
+  }).join('');
+  /* 达到 10 个上限时隐藏添加表单，显示提示；删除后自动恢复 */
+  const full = exams.length >= EXAM_MAX;
+  form.style.display = full ? 'none' : 'grid';
+  $('#examLimitTip').style.display = full ? 'block' : 'none';
+}
+
+/* ---------- 列表内：编辑 / 删除（事件委托） ---------- */
+$('#examList').addEventListener('click', async e=>{
+  const btn = e.target.closest('button[data-act]');
+  if(!btn || examState!=='ok') return;
+  const id = btn.dataset.id;
+  const item = exams.find(x=>String(x.id)===String(id));
+  if(!item) return;
+  if(btn.dataset.act==='del'){
+    const {error} = await dbDelete(id);
+    if(error){ toast('删除失败：'+error.message); return; }
+    exams = exams.filter(x=>String(x.id)!==String(id));
+    renderExams();
+    toast('已删除');
+  }else{
+    openEditModal(item);
+  }
+});
+
+/* ---------- 新增 ---------- */
+$('#examAddBtn').addEventListener('click', addExam);
+$('#examTimeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addExam(); });
+$('#examNameInput').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#examTimeInput').focus(); });
+async function addExam(){
+  if(examState!=='ok') return;
+  const name = $('#examNameInput').value.trim();
+  const tval = $('#examTimeInput').value;   // YYYY-MM-DD
+  if(!name){ toast('请填写项目名称'); $('#examNameInput').focus(); return; }
+  if(!tval){ toast('请选择项目日期'); $('#examTimeInput').focus(); return; }
+  if(examDayMs(tval) < todayMs()){ toast('项目日期不能早于今天'); return; }
+  if(exams.length >= EXAM_MAX){ toast('最多添加 '+EXAM_MAX+' 个项目'); return; }
+  $('#examAddBtn').disabled = true;
+  const {data, error} = await dbInsert(name, tval);
+  $('#examAddBtn').disabled = false;
+  if(error){ toast('添加失败：'+error.message); return; }
+  exams.push({id:data.id, name:data.name, date:data.exam_date});
+  $('#examNameInput').value=''; $('#examTimeInput').value=inputDate(new Date(Date.now()+DAY));
+  renderExams();
+  toast('已添加项目倒计时');
+}
+/* 默认把日期选择器预填为“明天”，方便快速添加 */
+$('#examTimeInput').value = inputDate(new Date(Date.now()+DAY));
+
+/* ---------- 编辑弹窗 ---------- */
+let editingId = null;
+function openEditModal(item){
+  editingId = item.id;
+  $('#editNameInput').value = item.name;
+  $('#editDateInput').value = item.date;
+  $('#editModal').classList.add('show');
+  setTimeout(()=>$('#editNameInput').focus(), 50);
+}
+function closeEditModal(){ $('#editModal').classList.remove('show'); editingId = null; }
+$('#editCancelBtn').addEventListener('click', closeEditModal);
+$('#editModal').addEventListener('click', e=>{ if(e.target===$('#editModal')) closeEditModal(); });
+$('#editSaveBtn').addEventListener('click', saveEdit);
+$('#editDateInput').addEventListener('keydown', e=>{ if(e.key==='Enter') saveEdit(); });
+async function saveEdit(){
+  if(!editingId) return;
+  const name = $('#editNameInput').value.trim();
+  const tval = $('#editDateInput').value;
+  if(!name){ toast('请填写项目名称'); return; }
+  if(!tval){ toast('请选择项目日期'); return; }
+  if(examDayMs(tval) < todayMs()){ toast('项目日期不能早于今天'); return; }
+  $('#editSaveBtn').disabled = true;
+  const {error} = await dbUpdate(editingId, {name, exam_date:tval});
+  $('#editSaveBtn').disabled = false;
+  if(error){ toast('保存失败：'+error.message); return; }
+  const it = exams.find(x=>String(x.id)===String(editingId));
+  if(it){ it.name=name; it.date=tval; }
+  closeEditModal();
+  renderExams();
+  toast('已保存修改');
+}
+
+/* ================== 6. 学习直播间（Supabase Realtime 跨互联网同步） ==================
+ * 任何设备、任何地点打开网页的同学都会加入同一个实时房间：
+ *  - 在线名单 / 昵称 / 摄像头开关：Supabase Realtime Presence
+ *    （上线、下线、断线均由 Realtime 服务器自动维护，本页无需心跳轮询）
+ *  - 直播间名称：Realtime Broadcast 广播，最后编辑者生效
+ *  - 摄像头：同步“是否开启”的状态；自己的窗口直接显示本机摄像头实时画面
+ * Realtime 与倒计时共用同一个 Supabase 项目，无需另外建表；
+ * anon 密钥默认允许使用 Presence / Broadcast（只有数据库变更监听才涉及 RLS）。
+ */
+const ROOM_CHANNEL = 'hanyif-study-room-v2';
+const ROOM_KEY = 'sr.room';
+
+/* 我的身份：id 按标签页独立（同一台电脑多开标签页也算不同同学）；
+   昵称优先取本标签页上次用的，其次取浏览器记住的登录昵称，最后随机生成 */
+let myId = sessionStorage.getItem('sr.myId');
+if(!myId){ myId = 'u'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); sessionStorage.setItem('sr.myId',myId); }
+const me = {
+  id: myId,
+  name: sessionStorage.getItem('sr.myName') || storeGet(NICK_KEY,'') || ('同学'+myId.slice(-4)),
+  cam: false
+};
+$('#nickInput').value = me.name;
+
+const peers = new Map();      // 其他在线同学：id -> {id,name,cam}（来自 Presence）
+let roomCh = null;            // Supabase Realtime 频道实例
+let rtSubscribed = false;     // 频道是否已订阅成功（成功后才能 track）
+let rtJoined = false;         // 是否完成过至少一次名单同步（决定在线人数显示）
+let trackTimer = null;        // 昵称连续输入时的 track 节流计时器
+
+/* 登录昵称同步到直播间（在第 5 部分的 submitNick 中调用；函数声明会提升，前面可直接调用） */
+function syncRoomNickFromLogin(nick){
+  if(!nick) return;
+  me.name = nick;
+  $('#nickInput').value = nick;
+  sessionStorage.setItem('sr.myName', nick);
+  renderTiles();
+  pushPresence(true);         // 立即上报给全房间
+}
+
+/* 把我的最新状态（昵称/摄像头开关）上报到 Presence；immediate=false 时节流 600ms，省免费额度 */
+function pushPresence(immediate){
+  if(!roomCh || !rtSubscribed) return;
+  if(immediate){ clearTimeout(trackTimer); trackNow(); return; }
+  clearTimeout(trackTimer);
+  trackTimer = setTimeout(trackNow, 600);
+}
+function trackNow(){
+  if(!roomCh || !rtSubscribed) return;
+  roomCh.track({ id:me.id, name:me.name, cam:me.cam });
+}
+
+/* Presence 名单变化（有人上线/下线/改昵称/切换摄像头，断线被服务器剔除）时重建名单 */
+function onPresenceSync(){
+  const state = roomCh.presenceState();   // 结构：{ presenceKey: [状态对象, ...] }
+  peers.clear();
+  Object.keys(state).forEach(k=>{
+    const o = state[k] && state[k][0];
+    if(o && o.id && o.id !== me.id){
+      peers.set(o.id, { id:o.id, name:o.name || '同学', cam:!!o.cam });
+    }
+  });
+  rtJoined = true;
+  renderTiles();
+}
+
+/* 初始化实时房间（Supabase 不可用时退化为只显示自己，不影响其它功能） */
+function initRoom(){
+  if(!supa){ $('#onlinePill').textContent='实时房间不可用'; renderTiles(); return; }
+  $('#onlinePill').textContent='连接中…';
+  try{
+    /* presence.key 固定为我的 id：同一标签页重连后不会在名单里出现两份 */
+    roomCh = supa.channel(ROOM_CHANNEL, { config:{ presence:{ key:me.id } } });
+  }catch(e){ $('#onlinePill').textContent='实时房间不可用'; renderTiles(); return; }
+
+  roomCh.on('presence', { event:'sync' }, onPresenceSync);
+  roomCh.on('broadcast', { event:'room' }, ({payload})=>applyRoomName(payload,false));
+  /* 有新同学加入时，把我本地保存的房间名再广播一次（新加入者此前收不到历史广播）；
+     接收端按消息签名去重，多人同时回应也不会造成抖动 */
+  roomCh.on('presence', { event:'join' }, ()=>{
+    const r = storeGet(ROOM_KEY,null);
+    if(r && r.name){ try{ roomCh.send({type:'broadcast', event:'room', payload:r}).catch(()=>{}); }catch(e){} }
+  });
+
+  roomCh.subscribe((status)=>{
+    if(status === 'SUBSCRIBED'){
+      rtSubscribed = true;
+      trackNow();                 /* 订阅成功后立即上线；断线自动重连成功时也会走到这里 */
+    }else if(status === 'CHANNEL_ERROR' || status === 'TIMED_ERROR' || status === 'CLOSED'){
+      rtSubscribed = false; rtJoined = false;
+      $('#onlinePill').textContent='连接中…';   /* supabase-js 会自动指数退避重连 */
+    }
+  });
+  renderTiles();
+}
+/* 离开页面：主动下线；即使来不及执行，Presence 也会按 TTL 自动把我剔除 */
+function leaveRoom(){
+  try{ roomCh && roomCh.untrack(); }catch(e){}
+  try{ roomCh && supa && supa.removeChannel(roomCh); }catch(e){}
+}
+
+/* ---- 摄像头：getUserMedia 本地采集（画面只在自己的窗口实时显示，房间内同步开关状态） ---- */
+let stream=null;
+const video=document.createElement('video');
+video.muted=true; video.autoplay=true; video.playsInline=true;
+
+async function setCamera(on){
+  if(on){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:360}},audio:false});
+    }catch(err){
+      toast('无法开启摄像头：'+(err.name==='NotAllowedError'?'未获得授权':'设备不可用'));
+      $('#camToggle').checked=false;
+      return;
+    }
+    video.srcObject=stream;
+    await video.play().catch(()=>{});
+    me.cam=true;
+    renderTiles(); attachMyVideo();
+    pushPresence(true);
+    $('#camStatus').textContent='已开启：房间同学能看到你的摄像头状态';
+  }else{
+    me.cam=false;
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    video.srcObject=null;
+    renderTiles();
+    pushPresence(true);
+    $('#camStatus').textContent='关闭：仅挂在房间自习';
+  }
+}
+$('#camToggle').addEventListener('change', e=>setCamera(e.target.checked));
+
+/* ---- 昵称修改：本地立刻刷新，状态上报节流 600ms（避免每个字符都打一次 Realtime） ---- */
+$('#nickInput').addEventListener('input', e=>{
+  let v=e.target.value.trim();
+  if(!v) v='同学'+me.id.slice(-4);
+  me.name=v;
+  sessionStorage.setItem('sr.myName', e.target.value.trim() || v);
+  renderTiles();
+  pushPresence(false);
+});
+
+/* ---- 直播间名称（Realtime Broadcast，最后编辑者生效，本地存一份） ---- */
+/* 去重用消息签名（时间戳+发送者+名称），不能用本地存储的时间戳对比——
+   同机多标签页共享 localStorage，会把刚收到的新消息误判成重复 */
+let lastRoomSig = '';
+(function initLastRoomSig(){
+  const r0 = storeGet(ROOM_KEY,null);
+  if(r0 && r0.name) lastRoomSig = r0.ts+'|'+r0.by+'|'+r0.name;
+})();
+function applyRoomName(room, fromSelf){
+  if(!room || !room.name) return;
+  const sig = room.ts+'|'+room.by+'|'+room.name;
+  if(sig === lastRoomSig) return;                 // 同一条消息（含多人同时回应）只应用一次
+  if(document.activeElement === $('#roomNameInput') && !fromSelf) return; // 我正在编辑时不被覆盖
+  lastRoomSig = sig;
+  $('#roomNameInput').value = room.name;
+  /* 收到的名称也持久化到本机：这样任何在线同学都能向以后加入的新同学转发同一房间名 */
+  storeSet(ROOM_KEY, room);
+}
+$('#roomNameInput').addEventListener('change', ()=>{
+  const name=$('#roomNameInput').value.trim()||'HanYIF 自习直播间';
+  const room={name,ts:Date.now(),by:me.id};
+  lastRoomSig = room.ts+'|'+room.by+'|'+room.name;
+  storeSet(ROOM_KEY,room);
+  try{
+    if(roomCh && rtSubscribed){
+      const p = roomCh.send({type:'broadcast', event:'room', payload:room});
+      if(p && p.catch) p.catch(()=>{});           /* 偶发发送失败不弹未捕获错误 */
+    }
+  }catch(e){}
+});
+/* 进入页面时读取一次本机保存的直播间名称 */
+(function initRoomName(){
+  const r=storeGet(ROOM_KEY,null);
+  if(r && r.name) $('#roomNameInput').value=r.name;
+})();
+
+/* ---- 视频窗口网格渲染 ---- */
+let rosterSig='';
+function allUsers(){
+  return [me].concat(Array.from(peers.values()));
+}
+/* 根据 id 生成稳定的柔和头像底色 */
+function avatarColor(id){
+  let h=0; for(let i=0;i<id.length;i++) h=(h*31+id.charCodeAt(i))%360;
+  return `hsl(${h},30%,66%)`;
+}
+function renderTiles(){
+  const users=allUsers();
+  /* 只有名单/昵称/摄像头状态变化时才重建 DOM，避免把本地视频流冲掉 */
+  const sig=users.map(u=>u.id+':'+u.name+':'+u.cam).join('|');
+  if(sig===rosterSig){ updateOnlineCount(users.length); return; }
+  rosterSig=sig;
+  $('#tiles').innerHTML=users.map(u=>{
+    const isSelf = u.id===me.id;
+    return `<div class="tile" data-id="${u.id}">
+      <video class="my-video" autoplay muted playsinline style="display:none"></video>
+      <div class="avatar" style="background:${avatarColor(u.id)}">${escapeHtml((u.name||'?').slice(0,1))}</div>
+      <div class="tile-bar">
+        <span class="dot ${u.cam?'':'off'}"></span>
+        <span class="nm">${escapeHtml(u.name||'同学')}</span>
+        ${isSelf?'<span class="me-tag">我</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+  attachMyVideo();
+  updateOnlineCount(users.length);
+}
+function updateOnlineCount(n){
+  /* 首次名单同步前显示"连接中…"，之后显示人数（Supabase 不可用时由 initRoom 改写为"不可用"） */
+  $('#onlinePill').textContent = rtJoined ? `${n} 人在线` : '连接中…';
+}
+/* 把本地摄像头流挂到"我"的窗口（重复调用安全） */
+function attachMyVideo(){
+  const tile=$('#tiles .tile[data-id="'+me.id+'"]');
+  if(!tile) return;
+  const v=tile.querySelector('video.my-video');
+  if(me.cam && stream && v.srcObject!==stream){
+    v.srcObject=stream; v.style.display='block';
+    tile.querySelector('.avatar').style.display='none';
+    v.play().catch(()=>{});
+  }else if(!me.cam){
+    v.style.display='none'; tile.querySelector('.avatar').style.display='flex';
+  }
+}
+
+/* ---- 实时房间生命周期：进入页面加入，切回标签页补报，关闭/隐藏时离开 ---- */
+initRoom();
+/* 每 60 秒把本机保存的房间名轻量重发一次：即使某次广播被网络丢弃也会自愈，
+   接收端按签名去重，名称没变化时任何人的界面都不会抖动 */
+setInterval(()=>{
+  if(!roomCh || !rtSubscribed) return;
+  const r = storeGet(ROOM_KEY,null);
+  if(r && r.name){ try{ roomCh.send({type:'broadcast',event:'room',payload:r}).catch(()=>{}); }catch(e){} }
+},60000);
+document.addEventListener('visibilitychange',()=>{
+  /* 手机/后台标签页恢复时，Presence 可能已过期，重新上报一次 */
+  if(!document.hidden && rtSubscribed) trackNow();
+});
+window.addEventListener('pagehide',leaveRoom);
+window.addEventListener('beforeunload',leaveRoom);
+
+/* ================== 启动 ================== */
+renderSchedule();
+renderExams();          /* examState 初始为 login：倒计时面板提示先提交昵称 */
+renderTiles();
+tick();
+setInterval(tick,250);          // 每 250ms 检查一次（内部按秒去重，保证秒针不跳帧）
+updateAudioState();
+/* 打开网页即弹出昵称框；浏览器记住的昵称会自动填充，确认即登录并解锁音频 */
+openNickModal();
+
+})();
+</script>
+</body>
+</html>
