@@ -455,6 +455,16 @@ table.sch{width:100%;border-collapse:collapse;}
   </div>
 </div>
 
+<!-- ========== 双人模式拦截遮罩（彩蛋：仅指定两个昵称可进入） ========== -->
+<div class="modal-mask" id="dualMask" style="display:none;z-index:9999">
+  <div class="modal-card">
+    <h3>就不让你进来</h3>
+    <div class="modal-actions single">
+      <button class="btn primary" id="dualCloseBtn">确认</button>
+    </div>
+  </div>
+</div>
+
 <div id="toastBox"></div>
 
 <!-- Supabase 官方客户端（v2）随网站同域部署，避免国内访问 jsdelivr CDN 失败；
@@ -887,6 +897,11 @@ $('#nickLoginBtn').addEventListener('click', submitNick);
 nickLoginInput.addEventListener('keydown', e=>{ if(e.key==='Enter') submitNick(); });
 /* 切换昵称：重新打开登录弹窗，确认后加载另一昵称的专属清单 */
 $('#switchNickBtn').addEventListener('click', ()=>openNickModal(currentNick));
+/* 被双人模式拦下后：点确认直接关闭页面（脚本无权关闭的标签页则跳到空白页） */
+$('#dualCloseBtn').addEventListener('click', ()=>{
+  window.close();
+  location.replace('about:blank');
+});
 
 /* ---------- Supabase 数据访问层（所有增删改查只走这里，按 nickname 隔离） ---------- */
 /* 加载个人项目；网络抖动（如代理刚建立时的偶发 DNS 失败）自动重试，最多共尝试 3 次 */
@@ -1070,6 +1085,12 @@ async function saveEdit(){
 const ROOM_CHANNEL = 'hanyif-study-room-v2';
 const MAX_ROOM = 20;   // 房间最多同时在线人数：第 21 人整站拦截
 const MAX_CAM  = 8;    // 摄像头席位数：最先进入的 8 人可开摄像头，其余为观众
+/* ---- 彩蛋：双人模式暗号 ----
+   只要房间里出现昵称 MAGIC_A，房间立即进入双人模式：
+   此后只允许 MAGIC_A 本人 + 一个 MAGIC_B 两人在场，其他人一律看到"就不让你进来"。
+   单独出现 MAGIC_B 不触发（必须 A 先到场）；A 离开房间则双人模式自动解除。 */
+const MAGIC_A = '韩逸峰会飞';
+const MAGIC_B = '飞得真高';
 
 /* 我的身份：id 按标签页独立（同一台电脑多开标签页也算不同同学）；
    昵称优先取本标签页上次用的，其次取浏览器记住的登录昵称，最后随机生成 */
@@ -1103,6 +1124,8 @@ let camTrack = null;            // 本机当前正在发送的视频轨（null=�
 let seats = new Set();          // 当前持有摄像头席位的同学 id（按进入序号取前 MAX_CAM 个）
 let roster = [];                // 当前完整在线名单（含我），按进入序号排序，用于渲染/计数
 let roomBlocked = false;        // 我是否因房间已满被拦截（拦截后遮罩整站）
+let dualBlocked = false;        // 我是否被双人模式拦在门外
+let dualActive = false;         // 当前房间是否处于双人模式
 let roomCh = null;            // Supabase Realtime 频道实例
 let rtSubscribed = false;     // 频道是否已订阅成功（成功后才能 track）
 let rtJoined = false;         // 是否完成过至少一次名单同步（决定在线人数显示）
@@ -1126,7 +1149,7 @@ function pushPresence(immediate){
   trackTimer = setTimeout(trackNow, 600);
 }
 function trackNow(){
-  if(!roomCh || !rtSubscribed || roomBlocked) return;
+  if(!roomCh || !rtSubscribed || roomBlocked || dualBlocked) return;
   roomCh.track({ id:me.id, seq:me.seq, name:me.name, cam:me.cam });
 }
 
@@ -1140,7 +1163,18 @@ function blockRoom(){
   $('#fullMask').style.display='flex';
 }
 
+/* 双人模式把我拦在门外：下线、关视频、显示"就不让你进来"（频道仍订阅着，模式解除可自动放回） */
+function blockDual(){
+  if(dualBlocked) return;
+  dualBlocked = true;
+  try{ roomCh && roomCh.untrack(); }catch(e){}
+  [...pcs.keys()].forEach(closePC);
+  if(me.cam) setCamera(false);
+  $('#dualMask').style.display='flex';
+}
+
 /* Presence 名单变化（有人上线/下线/改昵称/切换摄像头，断线被服务器剔除）时：
+   0) 彩蛋双人模式：出现 MAGIC_A 即只放行 A+B 两人；
    1) 按进入序号排序，最后一名超过 20 人则自行退出（保证双方同时加入时判定一致）；
    2) 前 8 名持有摄像头席位，有人离开自动顺次补位。 */
 function onPresenceSync(){
@@ -1151,6 +1185,24 @@ function onPresenceSync(){
     return o && o.id ? { id:o.id, seq:Number(o.seq)||0, name:o.name || '同学', cam:!!o.cam } : null;
   }).filter(Boolean)
     .sort((a,b)=> a.seq-b.seq || (a.id<b.id?-1:a.id>b.id?1:0));
+
+  /* ---- 彩蛋：双人模式（roster 已按进入序号排序，重名时最早进入的占席，所有客户端结论一致） ---- */
+  const aMem = roster.find(u=>u.name===MAGIC_A);   /* 房间里第一个"韩逸峰会飞" */
+  const bMem = roster.find(u=>u.name===MAGIC_B);   /* 房间里第一个"飞得真高" */
+  dualActive = !!aMem;
+  if(dualActive){
+    const iAmAllowed = me.id===aMem.id || (!!bMem && me.id===bMem.id);
+    if(!iAmAllowed){ blockDual(); return; }
+    /* 我之前被拦（刚换对昵称 / A 刚回来）：解除遮罩并重新上线 */
+    if(dualBlocked){
+      dualBlocked=false; $('#dualMask').style.display='none';
+      trackNow();
+    }
+  }else if(dualBlocked){
+    /* A 已离开，双人模式解除，自动放回房间 */
+    dualBlocked=false; $('#dualMask').style.display='none';
+    trackNow();
+  }
 
   /* 超额且我排在最后一名：我是该离开的第 21 人（序号相同时按 id 字典序兜底，所有人结论一致） */
   if(roster.length > MAX_ROOM && roster[roster.length-1].id === me.id){
